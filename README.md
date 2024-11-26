@@ -34,7 +34,7 @@ Forward probes = black, Reverse probes = blue
 * GC content: 40-60%
 * Max homopolymer length: 5
 
-**If your have trouble designment probes:**
+**If you have trouble designment probes:**
 * Double check your Tm range (might not be able to find viable sequences in your temperature range)
 * Adjust your probe size and spacing
 * Check your Blastn parameters to make sure sequences are being categorised correctly as unique
