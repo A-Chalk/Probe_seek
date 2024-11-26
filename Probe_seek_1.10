@@ -18,16 +18,16 @@ import time
 # Input sequence
 target_sequence = "paste_full_sequence_here"  
 
-db_path = "/Users/alexchalk/Blast/db/hg38"  # Path to BLAST database
+db_path = "/Users/.../Blast/db/hg38"  # Path to BLAST database (adjust for your directory)
 evalue = 1e-5
 word_size = 11
 dust = "no"
-num_threads = 5
+num_threads = 5 #adjust for your operating system
 
 chunk_size = 50
 overlap = 25
 
-output_dir = "/Users/alexchalk/Blast/results"
+output_dir = "/Users/.../Blast/results" # Path to BLAST database (adjust for your directory)
 os.makedirs(output_dir, exist_ok=True)
 
 # Probe design parameters
