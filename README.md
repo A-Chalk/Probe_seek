@@ -13,7 +13,7 @@ A useful tool for quickly finding viable probes for any DNA sequence. Want to pe
 * The final probes are exported, along with a pretty little chunk uniqueness map showing your probes. 
 
 ![chunk_uniqueness map](https://github.com/user-attachments/assets/882645b4-9b32-4d29-8a6d-5377f293d994)
-Green = unique (ideal!), Orange = 2-3 instances in reference genome (avoid on 3' end of probe and must be <50% of probe sequence), Red: > 3 instances (avoid), Purple = 0 instances (avoid) <-- happens if you have a deletion/indel
+Green = unique (ideal, script checks Tm, GC, etc), Orange = 2-3 instances in reference genome (script avoids on 3' end of probe (30 bp from 3' end) and also must be <50% of probe sequence), Red: > 3 instances (script avoids), Purple = 0 instances (avoids) <-- happens if you have a deletion/indel/wrong reference genome
 
 Forward probes = black, Reverse probes = blue
 
@@ -34,7 +34,13 @@ Forward probes = black, Reverse probes = blue
 * GC content: 40-60%
 * Max homopolymer length: 5
 
-## Authors
+**If your have trouble designment probes:**
+* Double check your Tm range (might not be able to find viable sequences in your temperature range)
+* Adjust your probe size and spacing
+* Check your Blastn parameters to make sure sequences are being categorised correctly as unique
+* Flip your sequence around and check the reverse compliment (usually finds almost identical probes).
+
+## Author
 * J. Alexander Chalk
 
 Happy probing!
