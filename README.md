@@ -10,7 +10,13 @@ A useful tool for quickly finding viable probes for any DNA sequence. Want to pe
 ## How it works
 * Probe Seek takes your sequence and breaks it into small chunks *(default: 50 bp with 25 bp overlap between chunks)* and performs blastn locally to identify all viable regions that are unique or semi-unique (follow [directions online](https://dbsloan.github.io/TS2019/exercises/local_blast.html) or ask ChatGPT to set this up on your computer).
 * Once all unique regions are mapped (green), probe design is performed by scanning across your viable sequences, adjusting length and spacing to meet your desired probe parameters. The script automatically alternates between forward and reverse complimentary with your target.
-* The final probes are exported, along with a pretty little chunk uniqueness map showing.
+* The final probes are exported, along with a pretty little chunk uniqueness map showing your probes. 
+
+![chunk_uniqueness map](https://github.com/user-attachments/assets/882645b4-9b32-4d29-8a6d-5377f293d994)
+Green = unique (ideal!), Orange = 2-3 instances in reference genome (avoid on 3' end of probe and must be <50% of probe sequence), Red: > 3 instances (avoid), Purple = 0 instances (avoid) <-- happens if you have a deletion/indel
+
+Forward probes = black, Reverse probes = blue
+
 
 ## Default parameters
 **Blast Search:**
