@@ -7,6 +7,7 @@ description: A script for generating custom DNA probes for strategies like probe
 """
 
 import os
+import sys
 import matplotlib.pyplot as plt
 from Bio.Blast.Applications import NcbiblastnCommandline
 from collections import Counter
@@ -16,31 +17,33 @@ import time
 
 # ---- Global Parameters ----
 # Input sequence
-target_sequence = "paste_full_sequence_here"  
+target_sequence = "paste_sequence_here"  
 
-db_path = "/Users/.../Blast/db/hg38"  # Path to BLAST database (adjust for your directory)
+db_path = "/Users/.../hg38" # Path to BLAST database (adjust for your directory)
 evalue = 1e-5
-word_size = 11
+word_size = 9
 dust = "no"
 num_threads = 5 #adjust for your operating system
 
-chunk_size = 50
-overlap = 25
+chunk_size = 28
+overlap = 14 
 
-output_dir = "/Users/.../Blast/results" # Path to BLAST database (adjust for your directory)
+output_dir = "/Users/.../results" # Path to BLAST database (adjust for your directory)
 os.makedirs(output_dir, exist_ok=True)
 
 # Probe design parameters
-probe_spacing = 250
-tm_target_range = (75, 80)
-tm_target = 78
-max_homopolymer_length = 5
+tm_range = (78, 88)
+max_homopolymer_length = 8
 probe_length_default = 100
-probe_length_min = 80
+probe_length_min = 90
 probe_length_max = 120
+probe_spacing = 1
+
+max_3 = 10 #maximum number of non-unique bases allowed in your probe
 
 # ---- Utility Functions ----
 def split_sequence(sequence, chunk_size, overlap):
+    """Breaks your target sequence into custom sized chunks with overlap between chunks"""
     chunks = []
     for i in range(0, len(sequence), chunk_size - overlap):
         chunk = sequence[i:i + chunk_size]
@@ -57,6 +60,7 @@ def save_chunks_to_file(chunks, output_file):
 
 
 def run_blast_local(query_file, results_file):
+    """Uses blastn parameters to align each of your chunks against a reference genome"""
     blastn_cline = NcbiblastnCommandline(
         cmd="blastn",
         query=query_file,
@@ -72,6 +76,7 @@ def run_blast_local(query_file, results_file):
 
 
 def parse_blast_results_by_chunk(results_file, chunk_labels):
+    """Counts number of times each chunk is found throughout reference genome"""
     chunk_hit_counts = Counter()
     with open(results_file, "r") as file:
         for line in file:
@@ -82,12 +87,16 @@ def parse_blast_results_by_chunk(results_file, chunk_labels):
     for chunk_label in chunk_labels:
         count = chunk_hit_counts.get(chunk_label, 0)
         if count == 0:
+            #sequence not found anywhere = 0
             uniqueness_map.append(0)
         elif count == 1:
+            #sequence found at one site in genome = 1
             uniqueness_map.append(1)
         elif count <= 3:
+            #sequence found 2-3 times in genome = 2
             uniqueness_map.append(2)
         else:
+            #sequence found more than 3 times across genome = 3
             uniqueness_map.append(3)
     return uniqueness_map
 
@@ -101,32 +110,6 @@ def has_homopolymers(seq, max_len):
         if base * max_len in seq:
             return True
     return False
-
-
-def visualize_sequence_uniqueness_by_chunk(chunk_labels, uniqueness_map, output_file, probes):
-    """Create a graphical representation of your target sequence with overlayed probes"""
-    value_to_color = {0: "purple", 1: "green", 2: "orange", 3: "red"}
-    base_positions = [i * (chunk_size - overlap) for i in range(len(chunk_labels))]
-    colors = [value_to_color[val] for val in uniqueness_map]
-
-    plt.figure(figsize=(12, 3))
-    plt.bar(base_positions, [1] * len(chunk_labels), color=colors, edgecolor="none", width=(chunk_size - overlap))
-    plt.xlabel("Base Pair Position")
-    plt.ylabel("Uniqueness")
-    plt.title("Chunk Uniqueness")
-
-    # Overlay probes as line segments
-    for idx, probe in enumerate(probes):
-        color = "black" if probe["orientation"] == "+" else "darkblue"
-        y_offset = 1.05 + (idx % 2) * 0.05  # Staggering for visibility
-        plt.hlines(y=y_offset, xmin=probe["start"], xmax=probe["end"], colors=color, linewidth=2)
-        # Optionally label probes with their index or properties
-        plt.text((probe["start"] + probe["end"]) / 2, y_offset + 0.02,
-                 f"{idx + 1}", color=color, fontsize=8, ha="center")
-
-    plt.tight_layout()
-    plt.savefig(output_file)
-    plt.close()
 
 
 def generate_uniqueness_string(target_sequence, uniqueness_map, chunk_size, overlap):
@@ -153,22 +136,25 @@ def generate_uniqueness_string(target_sequence, uniqueness_map, chunk_size, over
 
 def satisfies_uniqueness(seq_start, seq_end, orientation, uniqueness_string):
     """
-    Check if the region between seq_start and seq_end satisfies uniqueness constraints.
+    Check if the probe sequence satisfies uniqueness constraints. 
+    Less than 1/4 of probe can contain regions found at 2-3 sites across genome, and the last 30 bp from 3' end must be unique.
     """
     relevant_region = uniqueness_string[seq_start:seq_end]
 
     # Reject sequences with any 0's or 3's in the uniqueness region
-    if any(u in [0, 3] for u in relevant_region):
+    if any(u in [0] for u in relevant_region):
         return False
 
     count_1 = sum(1 for u in relevant_region if u == 1)
     count_2 = sum(1 for u in relevant_region if u == 2)
+    count_3 = sum(1 for u in relevant_region if u == 3)
 
-    # Orientation-specific checks
+    # Orientation-specific checks.
     if orientation == "+":
-        return relevant_region[-30:].count(0) == 0 and count_1 >= 30 and count_2 < 15
+        #Ensures that no 2's or 3' are in the 30 bp 3' end of sequence, that less than 1/4 of the sequence is 2's and that the number of 3's is less than max_3
+        return relevant_region[-30:].count(2) == 0 and relevant_region[-30:].count(3) == 0 and count_1 >= 30 and count_2 < len(relevant_region)/4 and count_3 < max_3
     elif orientation == "-":
-        return relevant_region[:30].count(0) == 0 and count_1 >= 30 and count_2 < 15
+        return relevant_region[:30].count(2) == 0 and relevant_region[-30:].count(3) == 0 and count_1 >= 30 and count_2 < len(relevant_region)/4 and count_3 < max_3
 
     return False
 
@@ -187,27 +173,37 @@ def adjust_probe_length(probe_start, probe_end, orientation, target_sequence, un
 
         probe_seq = target_sequence[probe_start:probe_end]
         tm = mt.Tm_NN(Seq(probe_seq), nn_table=mt.DNA_NN4, Na=50, Mg=1.5)
-        print(f"Adjusting: Start={probe_start}, End={probe_end}, Tm={tm:.2f}")
 
-        # Check if Tm and uniqueness constraints are satisfied
-        if tm_target_range[0] <= tm <= tm_target_range[1]:
+        # Check if Tm, holopolymer, GC content, and uniqueness constraints are satisfied for a given sequence
+        if tm_range[0] <= tm <= tm_range[1]:
             if has_homopolymers(probe_seq, max_homopolymer_length):
-                print(f"Rejected due to homopolymers: {probe_seq}")
+                print(f"Rejected at ({probe_start},{probe_end}) due to homopolymers")
                 return None, None
+            
+            gc_content = calculate_gc_content(probe_seq)
+            if not (35 < gc_content < 65): #Modify these number to change GC range
+                print(f"Rejected at ({probe_start},{probe_end}) do to GC content of {gc_content:.2f}")
+                return None, None
+            
             if satisfies_uniqueness(probe_start, probe_end, orientation, uniqueness_string):
                 return probe_start, probe_end
+            else:
+                print(f"Sequence at ({probe_start},{probe_end}) was not unique enough")
+                return None, None
 
         # Adjust probe length
-        if tm < tm_target:
-            if orientation == "+":
-                probe_start = max(0, probe_start - 1)
-            elif orientation == "-":
-                probe_end = min(len(target_sequence), probe_end + 1)
-        elif tm > tm_target:
-            if orientation == "+":
-                probe_start = min(probe_end - probe_length_min, probe_start + 1)
-            elif orientation == "-":
-                probe_end = max(probe_start + probe_length_min, probe_end - 1)
+        else:
+            print(f"Adjusting: Start={probe_start}, End={probe_end}, Tm={tm:.2f}")
+            if tm < tm_range[0]:
+                if orientation == "+": 
+                    probe_start = max(0, probe_start - 1)
+                elif orientation == "-":
+                    probe_end = min(len(target_sequence), probe_end + 1)
+            elif tm > tm_range[1]:
+                if orientation == "+":
+                    probe_start = min(probe_end - probe_length_min, probe_start + 1)
+                elif orientation == "-":
+                    probe_end = max(probe_start + probe_length_min, probe_end - 1)
 
         # Check for lack of progress
         if (probe_start == previous_probe_start) and (probe_end == previous_probe_end):
@@ -220,17 +216,17 @@ def adjust_probe_length(probe_start, probe_end, orientation, target_sequence, un
 
 
 def design_probes(target_sequence, uniqueness_string):
+    """Takes all the desired conditions and scans scross target sequence generating candidate probes"""
     probes = []
     probe_start = 0
+    probe_end = probe_start + probe_length_default
     orientation = "+"
 
-    while probe_start < len(target_sequence):
-        probe_end = probe_start + probe_length_default
-        probe_end = min(probe_end, len(target_sequence))
-
-        if satisfies_uniqueness(probe_start, probe_end, orientation, uniqueness_string):
+    while probe_end < len(target_sequence):
+            # Starts with candidate probe of the default length. It will adjust this sequence length to match ideal Tm and sequence conditions, then check if the sequence is unique
             adjusted_start, adjusted_end = adjust_probe_length(probe_start, probe_end, orientation, target_sequence, uniqueness_string)
-            print(f"Candidate site found at {(probe_start, probe_end)}, attempting probe generation")
+
+            # If, after adjusting probe length, a viable probe is found, then information about that probe is stored in a list
             if adjusted_start is not None:
                 probe_seq = target_sequence[adjusted_start:adjusted_end]
                 # Extract uniqueness scores for the probe
@@ -243,19 +239,47 @@ def design_probes(target_sequence, uniqueness_string):
                     "orientation": orientation,
                     "length": len(probe_seq),
                     "sequence": probe_seq,
-                    "tm": mt.Tm_NN(Seq(probe_seq), nn_table=mt.DNA_NN4, Na=50, Mg=1.5),
-                    "gc_content": calculate_gc_content(probe_seq),
+                    "tm": f"{mt.Tm_NN(Seq(probe_seq), nn_table=mt.DNA_NN4, Na=50, Mg=1.5):.2f}",
+                    "gc_content": f"{calculate_gc_content(probe_seq):.2f}",
                     "uniqueness": probe_uniqueness,
                 }
                 probes.append(probe)
                 print(f"Probe found!: {probe}")
-                probe_start += probe_spacing
+                probe_start = probe_end + probe_spacing
+                probe_end = probe_start + probe_length_default
                 orientation = "-" if orientation == "+" else "+"
             else:
                 probe_start += 1
-        else:
-            probe_start += 1
+                probe_end += 1
+
+    print("Reached end of sequence, no more candidate probe sites to check")
     return probes
+
+
+def visualize_sequence_uniqueness_by_chunk(chunk_labels, uniqueness_map, output_file, probes):
+    """Create a graphical representation of your target sequence with overlayed probes"""
+    value_to_color = {0: "purple", 1: "green", 2: "orange", 3: "red"}
+    base_positions = [i * (chunk_size - overlap) for i in range(len(chunk_labels))]
+    colors = [value_to_color[val] for val in uniqueness_map]
+
+    plt.figure(figsize=(12, 3))
+    plt.bar(base_positions, [1] * len(chunk_labels), color=colors, edgecolor="none", width=(chunk_size - overlap))
+    plt.xlabel("Base Pair Position")
+    plt.ylabel("Uniqueness")
+    plt.title("Probe_seek ")
+
+    # Overlay probes as line segments
+    for idx, probe in enumerate(probes):
+        color = "black" if probe["orientation"] == "+" else "darkblue"
+        y_offset = 1.05 + (idx % 2) * 0.05 # Staggering for visibility
+        plt.hlines(y=y_offset, xmin=probe["start"], xmax=probe["end"], colors=color, linewidth=2)
+        # Optionally label probes with their index or properties
+        plt.text((probe["start"] + probe["end"]) / 2, y_offset + 0.02,
+                 f"{idx + 1}", color=color, fontsize=8, ha="center")
+
+    plt.tight_layout()
+    plt.savefig(output_file)
+    plt.close()
 
 
 # ---- Main Script ----
@@ -267,7 +291,7 @@ if __name__ == "__main__":
     chunks = split_sequence(target_sequence, chunk_size, overlap)
     chunk_labels = [f"chunk_{idx}_pos_{start}" for idx, (_, start) in enumerate(chunks)]
     base_positions = [start for _, start in chunks]
-
+    
     chunks_file = os.path.join(output_dir, "chunks.txt")
     save_chunks_to_file(chunks, chunks_file)
 
@@ -284,14 +308,19 @@ if __name__ == "__main__":
 
     # Step 3: Design probes
     print("Designing probes...")
+    sys.stdout = open('/Users/.../results/output.txt', 'w')
     probes = design_probes(target_sequence, uniqueness_string)
 
     with open(os.path.join(output_dir, "designed_probes.txt"), "w") as f:
         for probe in probes:
+            probe_seq = probe["sequence"]
+            if probe["orientation"] == "-":
+                probe["sequence"] = str(Seq(probe["sequence"]).reverse_complement())
             f.write(f"{probe}\n")
 
-
     # Step 4: Export results
+    sys.stdout.close()
+    sys.stdout = sys.__stdout__
     print(f"Designed {len(probes)} probes. Results saved.")
 
     chunk_uniqueness_plot = os.path.join(output_dir, "chunk_uniqueness.png")
@@ -299,3 +328,6 @@ if __name__ == "__main__":
 
     end_time = time.time()
     print(f"Total time: {(end_time - start_time) / 60:.2f} minutes.")
+    print("Make sure to validate these probes with trusted sources (Blat, IDT, NEB Tm calulator, etc).")
+    # Reset to normal
+
